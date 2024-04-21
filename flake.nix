@@ -23,6 +23,7 @@
             libiconv
             libgit2
             pkg-config
+            gcc
           ];
         };
       in
