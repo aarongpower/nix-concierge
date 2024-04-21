@@ -17,11 +17,12 @@
           pname = "concierge";
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
-          cargoSha256 = "0000000000000000000000000000000000000000000000000000";
+          cargoSha256 = "sha256-IX339g7h62uatu45BD11y/vkDMQQezNuk4hSbwylgu4=";
           buildInputs = with pkgs; [
             openssl
             libiconv
             libgit2
+            pkg-config
           ];
         };
       in
