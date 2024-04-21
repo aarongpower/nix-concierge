@@ -13,20 +13,8 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         rustTools = fenix.packages.${system};
-        concierge = pkgs.rustPlatform.buildRustPackage {
-          pname = "concierge";
-          version = "0.1.0";
-          src = pkgs.lib.cleanSource ./.;
-          cargoSha256 = "0000000000000000000000000000000000000000000000000000";
-          buildInputs = with pkgs; [
-            openssl
-            libiconv
-            libgit2
-          ];
-        };
       in
       {
-        packages.default = concierge;
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustTools.default.toolchain
