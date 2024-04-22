@@ -18,17 +18,23 @@
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoSha256 = "sha256-IX339g7h62uatu45BD11y/vkDMQQezNuk4hSbwylgu4=";
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            gcc
+          ];
           buildInputs = with pkgs; [
             openssl
             libiconv
             libgit2
-            pkg-config
-            gcc
           ];
         };
       in
       {
         packages.default = concierge;
+        apps.default = {
+          type = "app";
+          program = "${concierge}/bin/concierge";
+        };
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustTools.default.toolchain
