@@ -35,6 +35,8 @@
           type = "app";
           program = "${concierge}/bin/concierge";
         };
+        defaultPackage.${system} = concierge;
+        defaultApp.${system} = self.apps.${system}.default;
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustTools.default.toolchain
