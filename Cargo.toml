@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.38"
 clap = { version = "4.5.4", features = ["derive"] }
+colored = "2.1.0"
 eyre = "0.6.12"
 git-url-parse = "0.4.4"
 git2 = "0.18.3"

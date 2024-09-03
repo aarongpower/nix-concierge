@@ -18,12 +18,20 @@ pub mod settings;
 #[command(version, about, long_about = None)]
 struct Args {
     /// Force re-evaluation by tagging flake.nix
-    #[arg(short, long)]
+    #[arg(short = 'e', long)]
     force_eval: bool,
 
     /// Update packages to latest versions
     #[arg(short, long)]
     update: bool,
+
+    /// Use fallback option to build from source
+    #[arg(short, long)]
+    fallback: bool,
+
+    /// show trace when evaluating
+    #[arg(short, long)]
+    show_trace: bool,
 }
 
 fn main() -> Result<()> {
@@ -43,7 +51,15 @@ fn main() -> Result<()> {
     }
 
     if args.update {
-        settings.update()
+        settings.update();
+    }
+
+    if args.fallback {
+        settings.fallback();
+    }
+
+    if args.show_trace {
+        settings.show_trace();
     }
 
     // Check that configuration is present

@@ -8,7 +8,8 @@ use git_url_parse::normalize_url;
 /// Useful to compare that two remote git repos are the same even if
 /// they are using different transports.
 ///
-/// For example, both of the following git URLs become `github.com/username/repo`.
+/// For example, both of the following git URLs are equivalent because they refer to the same repo
+/// despite using different transports. They would both become `github.com/username/repo`.
 ///   - `git@github.com:username/repo.git`
 ///   - `https://github.com/username/repo`
 fn normalize_git_url(url: &str) -> Option<String> {

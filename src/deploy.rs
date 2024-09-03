@@ -1,9 +1,11 @@
+use std::fs;
 use std::fs::{read_to_string, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use chrono::{DateTime, Local, TimeZone};
+use colored::*;
 use eyre::{eyre, ContextCompat, OptionExt, Result, WrapErr};
 use log::debug;
 use os_version::OsVersion;
@@ -44,6 +46,18 @@ pub fn deploy_nix_configuration(settings: Settings) -> Result<()> {
         })?;
     };
 
+    // Rebuild all docker-compose.yml files
+    build_docker_compose_yml(settings.clone()).wrap_err_with(|| {
+        "Failed to use compose2nix to convert docker-compose.yml projects to .nix files"
+    })?;
+
+    // tag files named `docker-compose.nix` to force pulling latest docker images during update
+    if settings.update {
+        for file in search_files_with_name(&settings.config_path, "docker-compose.yml")? {
+            tag_file_content(file, deployment_time.clone())?;
+        }
+    }
+
     // rsync from config to install dir
     rsync(
         settings.config_path.clone(),
@@ -67,6 +81,14 @@ pub fn deploy_nix_configuration(settings: Settings) -> Result<()> {
     if settings.show_trace {
         update_command.push("-vv");
     };
+
+    if settings.fallback {
+        update_command.push("--fallback");
+    }
+
+    if settings.show_trace {
+        update_command.push("--show-trace");
+    }
 
     update_command.push(
         settings
@@ -172,11 +194,132 @@ fn rsync<P: AsRef<Path>, S: AsRef<str>>(
     )
 }
 
+// Use `compose2nix` to convert any `docker-compose.yml` files into equivalent `.nix` files
+fn build_docker_compose_yml(settings: Settings) -> Result<()> {
+    // Search the path for any `docker-compose.yml` files
+
+    let files = search_files_with_name(settings.config_path, "docker-compose.yml")?;
+
+    println!(
+        "Found the following docker-compose.yml files, will use compose2nix to build them now."
+    );
+    files
+        .iter()
+        .for_each(|path| println!("\t{}", path.to_string_lossy()));
+
+    for path in files {
+        if let Some(dir) = path.parent() {
+            let name = dir
+                .file_name()
+                .ok_or_else(|| {
+                    eyre!(
+                        "Error getting directory name for docker-compose.yml: {:?}",
+                        path
+                    )
+                })?
+                .to_string_lossy()
+                .to_string();
+            realtime_command_in_dir(
+                "compose2nix",
+                dir,
+                vec!["-project", &name],
+                format!("Failed to convert docker-compose.yml to .nix: {:?}", dir).as_str(),
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+// Recursively searches directory tree from specified root for files with a specified name
+// Returns a `Vec` of `PathBuf`
+fn search_files_with_name<P: AsRef<Path>, S: AsRef<str>>(root: P, name: S) -> Result<Vec<PathBuf>> {
+    let root = root.as_ref();
+    let name = name.as_ref();
+
+    let mut files: Vec<PathBuf> = Vec::new();
+
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            files.extend(search_files_with_name(path, name)?);
+        } else if path.is_file() {
+            if let Some(filename) = path.file_name() {
+                if filename == name {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    Ok(files)
+}
+
 fn realtime_command_vec<S: AsRef<str>>(cmd_args: Vec<S>, failure_msg: S) -> Result<()> {
     let mut cmd_args: Vec<&str> = cmd_args.iter().map(|s| s.as_ref()).collect();
     let cmd = cmd_args.remove(0);
 
     realtime_command(cmd, cmd_args, failure_msg.as_ref())
+}
+
+fn realtime_command_in_dir<P: AsRef<Path>, S: AsRef<str>>(
+    command: S,
+    dir: P,
+    args: Vec<S>,
+    failure_msg: S,
+) -> Result<()> {
+    let command = command.as_ref();
+    let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+    let failure_msg = failure_msg.as_ref();
+    let dir = dir.as_ref();
+
+    debug!(
+        "Running command {} in realtime in dir {} with args {:?}",
+        command,
+        dir.to_string_lossy(),
+        &args,
+    );
+
+    let mut child = Command::new(command)
+        .args(&args)
+        .current_dir(dir)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .wrap_err_with(|| {
+            format!(
+                "Error spawning process {} with args {:?}: {failure_msg}",
+                command, args
+            )
+        })?;
+
+    let output = child.wait().wrap_err_with(|| {
+        format!(
+            "Failed getting exit status for process {} with args {:?}",
+            &command, &args
+        )
+    })?;
+
+    match output.code() {
+        Some(c) if c == 0 => return Ok(()),
+        Some(c) => {
+            return Err(eyre!(
+                "Process {} with args {:?} failed with return code {}",
+                &command,
+                &args,
+                c
+            ))
+        }
+        None => {
+            return Err(eyre!(
+                "Process {} with args {:?} was terminated by signal",
+                &command,
+                &args
+            ))
+        }
+    }
 }
 
 fn realtime_command<S: AsRef<str>>(command: S, args: Vec<S>, failure_msg: S) -> Result<()> {
@@ -327,6 +470,20 @@ mod tests {
 
     use super::*;
 
+    // Mock the Settings struct and the realtime_command_in_dir funct
+    fn realtime_command_in_dir(
+        command: &str,
+        dir: &Path,
+        args: Vec<&str>,
+        error_msg: &str,
+    ) -> Result<()> {
+        // Simulate successful command execution
+        assert_eq!(command, "compose2nix");
+        assert!(dir.exists());
+        assert!(dir.is_dir());
+        Ok(())
+    }
+
     fn dt() -> DateTime<Local> {
         Local.with_ymd_and_hms(2023, 06, 16, 11, 12, 00).unwrap()
     }
@@ -424,5 +581,77 @@ mod tests {
             read_to_string(expected_path).expect("Read expected path to string"),
             read_to_string(test_file_path).expect("Read orignal path to string")
         );
+    }
+
+    #[test]
+    fn should_find_files_with_name() {
+        // Create a temporary directory
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create subdirectories
+        let subdir1 = temp_path.join("subdir1");
+        let subdir2 = temp_path.join("subdir2");
+        fs::create_dir_all(&subdir1).unwrap();
+        fs::create_dir_all(&subdir2).unwrap();
+
+        // Create files with the same name in different subdirectories
+        let mut file1 = File::create(subdir1.join("target_file.txt")).unwrap();
+        let mut file2 = File::create(subdir2.join("target_file.txt")).unwrap();
+        let _file3 = File::create(temp_path.join("other_file.txt")).unwrap();
+
+        writeln!(file1, "content for file1").unwrap();
+        writeln!(file2, "content for file2").unwrap();
+
+        // Call the function to search for files named "target_file.txt"
+        let result = search_files_with_name(temp_path, "target_file.txt").unwrap();
+
+        // Expected result
+        let expected: Vec<PathBuf> = vec![
+            subdir1.join("target_file.txt"),
+            subdir2.join("target_file.txt"),
+        ];
+
+        // Assert that the results match
+        assert_eq!(result.len(), expected.len());
+        for path in &expected {
+            assert!(result.contains(path));
+        }
+    }
+
+    #[test]
+    fn should_build_docker_compose_ymls() {
+        // Create a temporary directory
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Create subdirectories and docker-compose.yml files
+        let subdir1 = temp_path.join("subdir1");
+        let subdir2 = temp_path.join("subdir2");
+        fs::create_dir_all(&subdir1).unwrap();
+        fs::create_dir_all(&subdir2).unwrap();
+
+        let mut file1 = File::create(subdir1.join("docker-compose.yml")).unwrap();
+        let mut file2 = File::create(subdir2.join("docker-compose.yml")).unwrap();
+
+        writeln!(file1, "version: '3'\nservices:\n  app:\n    image: nginx").unwrap();
+        writeln!(file2, "version: '3'\nservices:\n  db:\n    image: postgres").unwrap();
+
+        // Create a Settings struct pointing to the temp directory
+        let settings = Settings {
+            config_path: temp_path.to_path_buf(),
+            force_evaluation: false,
+            update: false,
+            show_trace: false,
+            install_path: PathBuf::new(),
+            sync_exclusions: vec![],
+            fallback: false,
+        };
+
+        // Call the function to test
+        let result = build_docker_compose_yml(settings);
+
+        // Assert that the function executed successfully
+        assert!(result.is_ok());
     }
 }

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use eyre::{eyre, Result};
 use os_version::OsVersion;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Settings {
     pub force_evaluation: bool,
     pub update: bool,
@@ -11,6 +11,7 @@ pub struct Settings {
     pub config_path: PathBuf,
     pub install_path: PathBuf,
     pub sync_exclusions: Vec<String>,
+    pub fallback: bool,
 }
 
 impl Settings {
@@ -32,6 +33,7 @@ impl Settings {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            fallback: false,
         })
     }
 
@@ -62,5 +64,9 @@ impl Settings {
 
     pub fn config_path_string(&self) -> String {
         self.config_path.to_string_lossy().into_owned()
+    }
+
+    pub fn fallback(&mut self) {
+        self.fallback = true;
     }
 }
