@@ -17,9 +17,9 @@
         rustTools = fenix.packages.${system};
         concierge = pkgs.rustPlatform.buildRustPackage {
           pname = "concierge";
-          version = "0.1.0";
+          version = "0.2.0";
           src = pkgs.lib.cleanSource ./.;
-          cargoSha256 = "sha256-i9q8jqubrEPSzrZRvnwyp3eEKfb02EstjEyw5IdC6ss=";
+          cargoHash = "sha256-LtEV+1py/GLNv+P7No+OX7aTsrAhmQVcPqj9BxrCOlk=";
           nativeBuildInputs = with pkgs; [
             pkg-config
             gcc

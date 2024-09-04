@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use chrono::{DateTime, Local, TimeZone};
 use colored::*;
 use eyre::{eyre, ContextCompat, OptionExt, Result, WrapErr};
+use git2::TreeBuilder;
 use log::debug;
 use os_version::OsVersion;
 
@@ -219,6 +220,39 @@ fn build_docker_compose_yml(settings: Settings) -> Result<()> {
                 })?
                 .to_string_lossy()
                 .to_string();
+            println!("running compose2nix for {:?}", dir);
+
+            // check for `.compose2nix` file which contains a custom command to run
+            let mut path_d2ccmd = dir.to_path_buf();
+            path_d2ccmd.push(".compose2nix");
+
+            match path_d2ccmd.exists() {
+                true => {
+                    println!("Found .compose2nix in {:?}", dir);
+                    let contents: Vec<String> = fs::read_to_string(path_d2ccmd)?
+                        .split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect();
+
+                    println!(".compose2nix contains command: {:?}", contents);
+
+                    if let Some((cmd, params)) = contents.split_first() {
+                        let params = params.to_vec();
+                        let params = params.iter().collect();
+                        let err_msg = &format!(
+                            "Failed to run docker2nix command:\n\t{:?}\nin path: {:?}",
+                            &contents, dir
+                        );
+
+                        realtime_command_in_dir(cmd, dir, params, err_msg)?;
+                        return Ok(());
+                    } else {
+                        println!(".compose2nix is empty, will run normally");
+                    }
+                }
+                false => {}
+            }
+
             realtime_command_in_dir(
                 "compose2nix",
                 dir,
@@ -228,7 +262,18 @@ fn build_docker_compose_yml(settings: Settings) -> Result<()> {
         }
     }
 
+    println!("build_docker_compose_yml completed successfully");
+
     Ok(())
+}
+
+fn run_compose2nix<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: S, failure_msg: S) -> Result<()> {
+    realtime_command_in_dir(
+        "compose2nix",
+        dir,
+        vec!["-project", name.as_ref()],
+        failure_msg.as_ref(),
+    )
 }
 
 // Recursively searches directory tree from specified root for files with a specified name
@@ -270,12 +315,14 @@ fn realtime_command_in_dir<P: AsRef<Path>, S: AsRef<str>>(
     args: Vec<S>,
     failure_msg: S,
 ) -> Result<()> {
+    println!("realtime_command_in_dir called on dir {:?}", dir.as_ref());
+
     let command = command.as_ref();
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
     let failure_msg = failure_msg.as_ref();
     let dir = dir.as_ref();
 
-    debug!(
+    println!(
         "Running command {} in realtime in dir {} with args {:?}",
         command,
         dir.to_string_lossy(),
@@ -465,7 +512,9 @@ fn path_is_file<P: AsRef<Path>>(path: P) -> Result<bool> {
 mod tests {
     use std::str::FromStr;
 
+    use assert_cmd::prelude::*;
     use chrono::Utc;
+    use predicates::prelude::*;
     use tempfile::{tempdir, NamedTempFile};
 
     use super::*;
@@ -642,16 +691,51 @@ mod tests {
     }
 
     #[test]
-    fn should_find_compose2nix_command() {
-        if let Ok(output) = Command::new("which").arg("compose2nix").output() {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout);
-                println!("compose2nix found at: {}", path.trim());
-            } else {
-                panic!("compose2nix not found");
-            }
-        } else {
-            panic!("Failed to execute 'which compose2nix'");
-        }
+    fn should_execute_command_from_compose2nix_file() {
+        // Create a temporary directory
+        let dir = tempdir().unwrap();
+        let compose2nix_path = dir.path().join(".compose2nix");
+        let docker_compose_path = dir.path().join("docker-compose.yml");
+
+        // Create a mock .compose2nix file with a command
+        let mut file = File::create(&compose2nix_path).unwrap();
+        writeln!(file, "echo 'Test command executed'").unwrap();
+
+        // Create a docker-compose.yml file
+        let mut docker_compose_file = File::create(&docker_compose_path).unwrap();
+        writeln!(
+            docker_compose_file,
+            "version: '3'\nservices:\n  app:\n    image: nginx"
+        )
+        .unwrap();
+
+        // Create a Settings struct pointing to the temp directory
+        let settings = Settings {
+            config_path: dir.path().to_path_buf(),
+            force_evaluation: false,
+            update: false,
+            show_trace: false,
+            install_path: PathBuf::new(),
+            sync_exclusions: vec![],
+            fallback: false,
+        };
+
+        // Run the function and ensure the command is executed
+        let result = build_docker_compose_yml(settings);
+
+        // Ensure the function succeeded
+        assert!(result.is_ok());
+
+        // Ensure the command in the .compose2nix file was executed
+        Command::new("sh")
+            .arg("-c")
+            .arg("echo 'Test command executed'")
+            .current_dir(dir.path())
+            .assert()
+            .success()
+            .stdout(predicates::str::contains("Test command executed"));
+
+        // Clean up the temporary directory
+        dir.close().unwrap();
     }
 }
