@@ -470,20 +470,6 @@ mod tests {
 
     use super::*;
 
-    // Mock the Settings struct and the realtime_command_in_dir funct
-    fn realtime_command_in_dir(
-        command: &str,
-        dir: &Path,
-        args: Vec<&str>,
-        error_msg: &str,
-    ) -> Result<()> {
-        // Simulate successful command execution
-        assert_eq!(command, "compose2nix");
-        assert!(dir.exists());
-        assert!(dir.is_dir());
-        Ok(())
-    }
-
     fn dt() -> DateTime<Local> {
         Local.with_ymd_and_hms(2023, 06, 16, 11, 12, 00).unwrap()
     }
@@ -653,5 +639,19 @@ mod tests {
 
         // Assert that the function executed successfully
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn should_find_compose2nix_command() {
+        if let Ok(output) = Command::new("which").arg("compose2nix").output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout);
+                println!("compose2nix found at: {}", path.trim());
+            } else {
+                panic!("compose2nix not found");
+            }
+        } else {
+            panic!("Failed to execute 'which compose2nix'");
+        }
     }
 }

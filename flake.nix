@@ -6,9 +6,11 @@
     flake-utils.url = "github:numtide/flake-utils";
     fenix.url = "github:nix-community/fenix";
     fenix.inputs.nixpkgs.follows = "nixpkgs";
+    compose2nix.url = "github:aksiksi/compose2nix";
+    compose2nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, fenix, ... }:
+  outputs = { self, nixpkgs, flake-utils, fenix, ... } @inputs:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -21,12 +23,17 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
             gcc
+            which
+            inputs.compose2nix.packages.${system}.default
           ];
           buildInputs = with pkgs; [
             openssl
             libiconv
             libgit2
+            inputs.compose2nix.packages.${system}.default
           ];
+          RUST_BACKTRACE=1;
+          RUST_DEBUG="debug";
         };
       in
       {
@@ -37,17 +44,19 @@
         };
         defaultPackage.${system} = concierge;
         defaultApp.${system} = self.apps.${system}.default;
+
         devShell = pkgs.mkShell {
+          pure = true;
           buildInputs = with pkgs; [
             rustTools.default.toolchain
             bacon
-            zsh
             gcc
             pkg-config
             openssl
             rust-analyzer
             libiconv
             libgit2
+            inputs.compose2nix.packages.${system}.default
           ];
         };
       });
