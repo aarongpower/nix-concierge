@@ -19,12 +19,14 @@
           pname = "concierge";
           version = "0.2.0";
           src = pkgs.lib.cleanSource ./.;
-          cargoHash = "sha256-LtEV+1py/GLNv+P7No+OX7aTsrAhmQVcPqj9BxrCOlk=";
+          cargoHash = "sha256-jOgxOcawfu319XAZnnSAgT0B1oGIBrfcMaPU2803xaE=";
           nativeBuildInputs = with pkgs; [
             pkg-config
             gcc
             which
             inputs.compose2nix.packages.${system}.default
+          ] ++ lib.optionals (stdenv.isDarwin) [
+              darwin.apple_sdk.frameworks.Security
           ];
           buildInputs = with pkgs; [
             openssl
