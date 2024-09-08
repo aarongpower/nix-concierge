@@ -25,6 +25,7 @@
             gcc
             which
             inputs.compose2nix.packages.${system}.default
+            libgit2
           ] ++ lib.optionals (stdenv.isDarwin) [
               darwin.apple_sdk.frameworks.Security
           ];
