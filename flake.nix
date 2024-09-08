@@ -35,6 +35,11 @@
             libgit2
             inputs.compose2nix.packages.${system}.default
           ];
+
+          buildPhase = ''
+            export PKG_CONFIG_PATH=${pkgs.libgit2.dev}/lib/pkgconfig:$PKG_CONFIG_PATH
+            export LIBGIT2_STATIC=1
+          '';
           RUST_BACKTRACE=1;
           RUST_DEBUG="debug";
         };
