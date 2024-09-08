@@ -30,16 +30,18 @@
               darwin.apple_sdk.frameworks.Security
           ];
           buildInputs = with pkgs; [
+            pkg-config
             openssl
             libiconv
             libgit2
             inputs.compose2nix.packages.${system}.default
           ];
 
-          buildPhase = ''
-            export PKG_CONFIG_PATH=${pkgs.libgit2.dev}/lib/pkgconfig:$PKG_CONFIG_PATH
-            export LIBGIT2_STATIC=1
-          '';
+          # buildPhase = ''
+          #   export PKG_CONFIG_PATH=${pkgs.libgit2.dev}/lib/pkgconfig:$PKG_CONFIG_PATH
+          #   export LIBGIT2_STATIC=1
+          #   export LIBGIT2_NO_PKG_CONFIG=1
+          # '';
           RUST_BACKTRACE=1;
           RUST_DEBUG="debug";
         };
