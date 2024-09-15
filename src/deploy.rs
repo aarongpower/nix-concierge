@@ -201,7 +201,7 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
 
     let path = settings.config_path.join("systems").join(hostname);
 
-    let files = search_files_with_name(settings.config_path, "docker-compose.yml")?;
+    let files = search_files_with_name(path, "docker-compose.yml")?;
 
     println!(
         "Found the following docker-compose.yml files, will use compose2nix to build them now."
@@ -676,7 +676,7 @@ mod tests {
 
         // Create a Settings struct pointing to the temp directory
         let settings = Settings {
-            config_path: temp_path.to_path_buf(),
+            config_path: temp_dir.path().to_path_buf(),
             force_evaluation: false,
             update: false,
             show_trace: false,
