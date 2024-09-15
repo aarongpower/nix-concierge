@@ -16,7 +16,7 @@ use crate::settings::Settings;
 /// Deploy configuration from source to target using rsync
 /// then use platform appropriate tools to build and apply configuration
 /// using nix
-pub fn deploy_nix_configuration(settings: Settings) -> Result<()> {
+pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<()> {
     // We will assume source git repo state is valid, that stuff is handled elsewhere
     // Confirm that source at least has a flake.nix
     // Use rsync to copy from source to destination
@@ -48,7 +48,7 @@ pub fn deploy_nix_configuration(settings: Settings) -> Result<()> {
     };
 
     // Rebuild all docker-compose.yml files
-    build_docker_compose_yml(settings.clone()).wrap_err_with(|| {
+    build_docker_compose_yml(settings.clone(), hostname).wrap_err_with(|| {
         "Failed to use compose2nix to convert docker-compose.yml projects to .nix files"
     })?;
 
@@ -196,8 +196,10 @@ fn rsync<P: AsRef<Path>, S: AsRef<str>>(
 }
 
 // Use `compose2nix` to convert any `docker-compose.yml` files into equivalent `.nix` files
-fn build_docker_compose_yml(settings: Settings) -> Result<()> {
+fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> {
     // Search the path for any `docker-compose.yml` files
+
+    let path = settings.config_path.join("systems").join(hostname);
 
     let files = search_files_with_name(settings.config_path, "docker-compose.yml")?;
 
@@ -658,7 +660,7 @@ mod tests {
     fn should_build_docker_compose_ymls() {
         // Create a temporary directory
         let temp_dir = tempdir().unwrap();
-        let temp_path = temp_dir.path();
+        let temp_path = temp_dir.path().join("systems").join("acomputer");
 
         // Create subdirectories and docker-compose.yml files
         let subdir1 = temp_path.join("subdir1");
@@ -684,7 +686,7 @@ mod tests {
         };
 
         // Call the function to test
-        let result = build_docker_compose_yml(settings);
+        let result = build_docker_compose_yml(settings, "acomputer".to_string());
 
         // Assert that the function executed successfully
         assert!(result.is_ok());
@@ -694,8 +696,17 @@ mod tests {
     fn should_execute_command_from_compose2nix_file() {
         // Create a temporary directory
         let dir = tempdir().unwrap();
-        let compose2nix_path = dir.path().join(".compose2nix");
-        let docker_compose_path = dir.path().join("docker-compose.yml");
+        fs::create_dir_all(dir.path().join("systems").join("acomputer"));
+        let compose2nix_path = dir
+            .path()
+            .join("systems")
+            .join("acomputer")
+            .join(".compose2nix");
+        let docker_compose_path = dir
+            .path()
+            .join("systems")
+            .join("acomputer")
+            .join("docker-compose.yml");
 
         // Create a mock .compose2nix file with a command
         let mut file = File::create(&compose2nix_path).unwrap();
@@ -721,7 +732,7 @@ mod tests {
         };
 
         // Run the function and ensure the command is executed
-        let result = build_docker_compose_yml(settings);
+        let result = build_docker_compose_yml(settings, "acomputer".to_string());
 
         // Ensure the function succeeded
         assert!(result.is_ok());

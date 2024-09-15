@@ -76,8 +76,15 @@ fn main() -> Result<()> {
         );
     }
 
+    let host = hostname::get()
+        .wrap_err_with(|| "Failed to get system hostname.")?
+        .to_string_lossy()
+        .to_string();
+
+    println!("System hostname: {:?}", host);
+
     debug!("Deploying nix configuration");
-    deploy_nix_configuration(settings)
+    deploy_nix_configuration(settings, host)
         .wrap_err_with(|| "Failed to deploy and build nix configuration")?;
 
     Ok(())
