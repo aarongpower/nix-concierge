@@ -12,6 +12,7 @@ pub struct Settings {
     pub install_path: PathBuf,
     pub sync_exclusions: Vec<String>,
     pub fallback: bool,
+    pub update_input: Option<String>,
 }
 
 impl Settings {
@@ -34,6 +35,7 @@ impl Settings {
                 .map(|s| s.to_string())
                 .collect(),
             fallback: false,
+            update_input: None,
         })
     }
 
@@ -68,5 +70,9 @@ impl Settings {
 
     pub fn fallback(&mut self) {
         self.fallback = true;
+    }
+
+    pub fn update_input(&mut self, name: String) {
+        self.update_input = Some(name);
     }
 }

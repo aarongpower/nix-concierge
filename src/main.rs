@@ -32,6 +32,10 @@ struct Args {
     /// show trace when evaluating
     #[arg(short, long)]
     show_trace: bool,
+
+    /// update specific flake input
+    #[arg(short, long)]
+    update_input: Option<String>,
 }
 
 fn main() -> Result<()> {

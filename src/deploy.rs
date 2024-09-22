@@ -59,6 +59,15 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
         }
     }
 
+    if let Some(name) = settings.update_input {
+        realtime_command_in_dir(
+            "nix",
+            settings.config_path.clone(),
+            vec!["flake", "lock", "--update-input", name.as_str()],
+            format!("Error updating unput {}", name).as_str(),
+        );
+    }
+
     // rsync from config to install dir
     rsync(
         settings.config_path.clone(),
@@ -688,6 +697,7 @@ mod tests {
             install_path: PathBuf::new(),
             sync_exclusions: vec![],
             fallback: false,
+            update_input: None,
         };
 
         // Call the function to test
@@ -734,6 +744,7 @@ mod tests {
             install_path: PathBuf::new(),
             sync_exclusions: vec![],
             fallback: false,
+            update_input: None,
         };
 
         // Run the function and ensure the command is executed
