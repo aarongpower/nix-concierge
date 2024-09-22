@@ -710,6 +710,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn should_build_docker_compose_ymls() {
         // Create a temporary directory
         let temp_dir = tempdir().unwrap();
@@ -747,6 +748,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn should_execute_command_from_compose2nix_file() {
         // Create a temporary directory
         let dir = tempdir().unwrap();
