@@ -15,9 +15,12 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         rustTools = fenix.packages.${system};
+        cargoFile = ./Cargo.toml;
+        parsedCargoToml = builtins.fromTOML (builtins.readFile cargoFile);
+        version = parsedCargoToml.package.version;  # Extract version from Cargo.toml
         concierge = pkgs.rustPlatform.buildRustPackage {
           pname = "concierge";
-          version = "0.2.1";
+          version = version;
           src = pkgs.lib.cleanSource ./.;
           cargoHash = "sha256-BieWy7DUraYzHOQHPbQbSroj3pQFDjNlmtbL/udows4=";
           nativeBuildInputs = with pkgs; [

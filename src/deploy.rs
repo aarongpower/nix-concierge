@@ -203,6 +203,11 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
 
     let files = search_files_with_name(path, "docker-compose.yml")?;
 
+    if files.len() == 0 {
+        println!("No docker-compose.yml files found.");
+        return Ok(());
+    }
+
     println!(
         "Found the following docker-compose.yml files, will use compose2nix to build them now."
     );
