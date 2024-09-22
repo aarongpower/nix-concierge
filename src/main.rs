@@ -11,6 +11,7 @@ pub mod deploy;
 mod error;
 pub mod fs;
 pub mod git;
+pub mod hash;
 mod nix;
 pub mod settings;
 

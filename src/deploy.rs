@@ -1,16 +1,17 @@
 use std::fs;
-use std::fs::{read_to_string, File};
+use std::fs::{read_to_string, write, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use chrono::{DateTime, Local, TimeZone};
-use colored::*;
+// use colored::*;
 use eyre::{eyre, ContextCompat, OptionExt, Result, WrapErr};
-use git2::TreeBuilder;
+// use git2::TreeBuilder;
 use log::debug;
 use os_version::OsVersion;
 
+use crate::hash::hash_file;
 use crate::settings::Settings;
 
 /// Deploy configuration from source to target using rsync
@@ -65,7 +66,7 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
             settings.config_path.clone(),
             vec!["flake", "lock", "--update-input", name.as_str()],
             format!("Error updating unput {}", name).as_str(),
-        );
+        )?;
     }
 
     // rsync from config to install dir
@@ -217,12 +218,15 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
         return Ok(());
     }
 
-    println!(
-        "Found the following docker-compose.yml files, will use compose2nix to build them now."
+    debug!(
+        "The following docker-compose.yml files were found: {:?}",
+        files
     );
-    files
-        .iter()
-        .for_each(|path| println!("\t{}", path.to_string_lossy()));
+
+    // for each docker-compose.yml,
+    //   1. generate a hash of the file content
+    //   2. if there is no docker-compose.hash, generate it and run compose2nix
+    //   3. if there is a docker-compose.hash, compare to hash of file, and if different update and run compose2nix
 
     for path in files {
         if let Some(dir) = path.parent() {
@@ -236,11 +240,43 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
                 })?
                 .to_string_lossy()
                 .to_string();
-            println!("running compose2nix for {:?}", dir);
+            // println!("running compose2nix for {:?}", dir);
+
+            // check for docker-compose.hash and if it does and hash matches, then skip this path
+            let dchash_path = dir.to_path_buf().join("docker-compose.hash");
+            debug!("docker-compose.hash path: {:?}", dchash_path.clone());
+
+            let dchash_current = hash_file(dchash_path.clone())
+                .wrap_err(format!("Error generating hash of file {:?}", path))?;
+
+            if dchash_path.clone().exists() {
+                debug!(
+                    "Hash file {:?} exists with content: {}",
+                    path, dchash_current
+                );
+                let dchash_existing = read_to_string(dchash_path.clone()).wrap_err(format!(
+                    "Error reading file containing existing hash {:?}",
+                    dchash_path.clone()
+                ))?;
+                debug!(
+                    "File {:?} exists, hash contained is {}",
+                    dchash_path.clone(),
+                    dchash_existing
+                );
+                if dchash_existing == dchash_current {
+                    debug!(
+                        "Hash {} matches for file {:?}, skipping execution of compose2nix",
+                        dchash_current,
+                        path.clone()
+                    );
+                    continue;
+                }
+            };
+
+            println!("Running compose2nix for path: {:?}", dir);
 
             // check for `.compose2nix` file which contains a custom command to run
-            let mut path_d2ccmd = dir.to_path_buf();
-            path_d2ccmd.push(".compose2nix");
+            let path_d2ccmd = dir.to_path_buf().join(".compose2nix");
 
             match path_d2ccmd.exists() {
                 true => {
@@ -261,20 +297,23 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
                         );
 
                         realtime_command_in_dir(cmd, dir, params, err_msg)?;
-                        return Ok(());
                     } else {
-                        println!(".compose2nix is empty, will run normally");
+                        println!(".compose2nix is empty, no command will be run");
                     }
                 }
-                false => {}
+                false => {
+                    realtime_command_in_dir(
+                        "compose2nix",
+                        dir,
+                        vec!["-project", &name],
+                        format!("Failed to convert docker-compose.yml to .nix: {:?}", dir).as_str(),
+                    )?;
+                }
             }
 
-            realtime_command_in_dir(
-                "compose2nix",
-                dir,
-                vec!["-project", &name],
-                format!("Failed to convert docker-compose.yml to .nix: {:?}", dir).as_str(),
-            )?;
+            // finally, need to write the hash of the file used to the hash file
+            write(dchash_path.clone(), dchash_current)
+                .wrap_err(format!("Could not write hash to file {:?}", dchash_path))?;
         }
     }
 
@@ -283,14 +322,14 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
     Ok(())
 }
 
-fn run_compose2nix<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: S, failure_msg: S) -> Result<()> {
-    realtime_command_in_dir(
-        "compose2nix",
-        dir,
-        vec!["-project", name.as_ref()],
-        failure_msg.as_ref(),
-    )
-}
+// fn run_compose2nix<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: S, failure_msg: S) -> Result<()> {
+//     realtime_command_in_dir(
+//         "compose2nix",
+//         dir,
+//         vec!["-project", name.as_ref()],
+//         failure_msg.as_ref(),
+//     )
+// }
 
 // Recursively searches directory tree from specified root for files with a specified name
 // Returns a `Vec` of `PathBuf`
@@ -711,7 +750,7 @@ mod tests {
     fn should_execute_command_from_compose2nix_file() {
         // Create a temporary directory
         let dir = tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("systems").join("acomputer"));
+        fs::create_dir_all(dir.path().join("systems").join("acomputer")).unwrap();
         let compose2nix_path = dir
             .path()
             .join("systems")
