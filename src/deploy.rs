@@ -246,7 +246,7 @@ fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> 
             let dchash_path = dir.to_path_buf().join("docker-compose.hash");
             debug!("docker-compose.hash path: {:?}", dchash_path.clone());
 
-            let dchash_current = hash_file(dchash_path.clone())
+            let dchash_current = hash_file(path.clone())
                 .wrap_err(format!("Error generating hash of file {:?}", path))?;
 
             if dchash_path.clone().exists() {
