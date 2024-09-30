@@ -61,6 +61,7 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
     }
 
     if let Some(name) = settings.update_input {
+        println!("Updating input {}", &name);
         realtime_command_in_dir(
             "nix",
             settings.config_path.clone(),
@@ -87,7 +88,7 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
     }
 
     // run flake update if update option is true
-    update_command.extend(vec!["nix", "flake", "update"]);
+    update_command.extend(vec!["nix", "flake", "update", "--flake"]);
 
     if settings.show_trace {
         update_command.push("-vv");
