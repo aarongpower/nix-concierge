@@ -67,6 +67,10 @@ fn main() -> Result<()> {
         settings.show_trace();
     }
 
+    if let Some(input) = args.update_input {
+        settings.update_input(input);
+    }
+
     // Check that configuration is present
     debug!("Checking if flake.nix exists in config dir");
     if !settings.flake_file().exists() {
