@@ -48,11 +48,6 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
         })?;
     };
 
-    // Rebuild all docker-compose.yml files
-    build_docker_compose_yml(settings.clone(), hostname).wrap_err_with(|| {
-        "Failed to use compose2nix to convert docker-compose.yml projects to .nix files"
-    })?;
-
     // tag files named `docker-compose.nix` to force pulling latest docker images during update
     if settings.update {
         for file in search_files_with_name(&settings.config_path, "docker-compose.yml")? {
@@ -65,7 +60,7 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
         realtime_command_in_dir(
             "nix",
             settings.config_path.clone(),
-            vec!["flake", "lock", "--update-input", name.as_str()],
+            vec!["flake", "update", name.as_str()],
             format!("Error updating unput {}", name).as_str(),
         )?;
     }
@@ -75,7 +70,7 @@ pub fn deploy_nix_configuration(settings: Settings, hostname: String) -> Result<
         settings.config_path.clone(),
         settings.install_path.clone(),
         settings.sync_exclusions.clone(),
-        vec!["-ahi".to_string()],
+        vec!["-ahi".to_string(), "--delete".to_string()],
         true,
     )
     .wrap_err_with(|| "Failed rsync")?;
@@ -204,123 +199,6 @@ fn rsync<P: AsRef<Path>, S: AsRef<str>>(
         vec!["-p", "rsync", "--run", &rsync_command],
         "Failed executing rsync",
     )
-}
-
-// Use `compose2nix` to convert any `docker-compose.yml` files into equivalent `.nix` files
-fn build_docker_compose_yml(settings: Settings, hostname: String) -> Result<()> {
-    // Search the path for any `docker-compose.yml` files
-
-    let path = settings.config_path.join("systems").join(hostname);
-
-    let files = search_files_with_name(path, "docker-compose.yml")?;
-
-    if files.len() == 0 {
-        println!("No docker-compose.yml files found.");
-        return Ok(());
-    }
-
-    debug!(
-        "The following docker-compose.yml files were found: {:?}",
-        files
-    );
-
-    // for each docker-compose.yml,
-    //   1. generate a hash of the file content
-    //   2. if there is no docker-compose.hash, generate it and run compose2nix
-    //   3. if there is a docker-compose.hash, compare to hash of file, and if different update and run compose2nix
-
-    for path in files {
-        if let Some(dir) = path.parent() {
-            let name = dir
-                .file_name()
-                .ok_or_else(|| {
-                    eyre!(
-                        "Error getting directory name for docker-compose.yml: {:?}",
-                        path
-                    )
-                })?
-                .to_string_lossy()
-                .to_string();
-            // println!("running compose2nix for {:?}", dir);
-
-            // check for docker-compose.hash and if it does and hash matches, then skip this path
-            let dchash_path = dir.to_path_buf().join("docker-compose.hash");
-            debug!("docker-compose.hash path: {:?}", dchash_path.clone());
-
-            let dchash_current = hash_file(path.clone())
-                .wrap_err(format!("Error generating hash of file {:?}", path))?;
-
-            if dchash_path.clone().exists() {
-                debug!(
-                    "Hash file {:?} exists with content: {}",
-                    path, dchash_current
-                );
-                let dchash_existing = read_to_string(dchash_path.clone()).wrap_err(format!(
-                    "Error reading file containing existing hash {:?}",
-                    dchash_path.clone()
-                ))?;
-                debug!(
-                    "File {:?} exists, hash contained is {}",
-                    dchash_path.clone(),
-                    dchash_existing
-                );
-                if dchash_existing == dchash_current {
-                    debug!(
-                        "Hash {} matches for file {:?}, skipping execution of compose2nix",
-                        dchash_current,
-                        path.clone()
-                    );
-                    continue;
-                }
-            };
-
-            println!("Running compose2nix for path: {:?}", dir);
-
-            // check for `.compose2nix` file which contains a custom command to run
-            let path_d2ccmd = dir.to_path_buf().join(".compose2nix");
-
-            match path_d2ccmd.exists() {
-                true => {
-                    println!("Found .compose2nix in {:?}", dir);
-                    let contents: Vec<String> = fs::read_to_string(path_d2ccmd)?
-                        .split_whitespace()
-                        .map(|s| s.to_string())
-                        .collect();
-
-                    println!(".compose2nix contains command: {:?}", contents);
-
-                    if let Some((cmd, params)) = contents.split_first() {
-                        let params = params.to_vec();
-                        let params = params.iter().collect();
-                        let err_msg = &format!(
-                            "Failed to run docker2nix command:\n\t{:?}\nin path: {:?}",
-                            &contents, dir
-                        );
-
-                        realtime_command_in_dir(cmd, dir, params, err_msg)?;
-                    } else {
-                        println!(".compose2nix is empty, no command will be run");
-                    }
-                }
-                false => {
-                    realtime_command_in_dir(
-                        "compose2nix",
-                        dir,
-                        vec!["-project", &name],
-                        format!("Failed to convert docker-compose.yml to .nix: {:?}", dir).as_str(),
-                    )?;
-                }
-            }
-
-            // finally, need to write the hash of the file used to the hash file
-            write(dchash_path.clone(), dchash_current)
-                .wrap_err(format!("Could not write hash to file {:?}", dchash_path))?;
-        }
-    }
-
-    println!("build_docker_compose_yml completed successfully");
-
-    Ok(())
 }
 
 // fn run_compose2nix<P: AsRef<Path>, S: AsRef<str>>(dir: P, name: S, failure_msg: S) -> Result<()> {
@@ -708,103 +586,5 @@ mod tests {
         for path in &expected {
             assert!(result.contains(path));
         }
-    }
-
-    #[test]
-    #[ignore]
-    fn should_build_docker_compose_ymls() {
-        // Create a temporary directory
-        let temp_dir = tempdir().unwrap();
-        let temp_path = temp_dir.path().join("systems").join("acomputer");
-
-        // Create subdirectories and docker-compose.yml files
-        let subdir1 = temp_path.join("subdir1");
-        let subdir2 = temp_path.join("subdir2");
-        fs::create_dir_all(&subdir1).unwrap();
-        fs::create_dir_all(&subdir2).unwrap();
-
-        let mut file1 = File::create(subdir1.join("docker-compose.yml")).unwrap();
-        let mut file2 = File::create(subdir2.join("docker-compose.yml")).unwrap();
-
-        writeln!(file1, "version: '3'\nservices:\n  app:\n    image: nginx").unwrap();
-        writeln!(file2, "version: '3'\nservices:\n  db:\n    image: postgres").unwrap();
-
-        // Create a Settings struct pointing to the temp directory
-        let settings = Settings {
-            config_path: temp_dir.path().to_path_buf(),
-            force_evaluation: false,
-            update: false,
-            show_trace: false,
-            install_path: PathBuf::new(),
-            sync_exclusions: vec![],
-            fallback: false,
-            update_input: None,
-        };
-
-        // Call the function to test
-        let result = build_docker_compose_yml(settings, "acomputer".to_string());
-
-        // Assert that the function executed successfully
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    #[ignore]
-    fn should_execute_command_from_compose2nix_file() {
-        // Create a temporary directory
-        let dir = tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("systems").join("acomputer")).unwrap();
-        let compose2nix_path = dir
-            .path()
-            .join("systems")
-            .join("acomputer")
-            .join(".compose2nix");
-        let docker_compose_path = dir
-            .path()
-            .join("systems")
-            .join("acomputer")
-            .join("docker-compose.yml");
-
-        // Create a mock .compose2nix file with a command
-        let mut file = File::create(&compose2nix_path).unwrap();
-        writeln!(file, "echo 'Test command executed'").unwrap();
-
-        // Create a docker-compose.yml file
-        let mut docker_compose_file = File::create(&docker_compose_path).unwrap();
-        writeln!(
-            docker_compose_file,
-            "version: '3'\nservices:\n  app:\n    image: nginx"
-        )
-        .unwrap();
-
-        // Create a Settings struct pointing to the temp directory
-        let settings = Settings {
-            config_path: dir.path().to_path_buf(),
-            force_evaluation: false,
-            update: false,
-            show_trace: false,
-            install_path: PathBuf::new(),
-            sync_exclusions: vec![],
-            fallback: false,
-            update_input: None,
-        };
-
-        // Run the function and ensure the command is executed
-        let result = build_docker_compose_yml(settings, "acomputer".to_string());
-
-        // Ensure the function succeeded
-        assert!(result.is_ok());
-
-        // Ensure the command in the .compose2nix file was executed
-        Command::new("sh")
-            .arg("-c")
-            .arg("echo 'Test command executed'")
-            .current_dir(dir.path())
-            .assert()
-            .success()
-            .stdout(predicates::str::contains("Test command executed"));
-
-        // Clean up the temporary directory
-        dir.close().unwrap();
     }
 }
