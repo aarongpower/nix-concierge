@@ -22,7 +22,7 @@
           pname = "concierge";
           version = version;
           src = pkgs.lib.cleanSource ./.;
-          cargoHash = "sha256-Y8SQKsIig26/+rGzVYVMYc06oKf24odxrL0zcSBo4/g=";
+          cargoHash = "sha256-sJ1mHk0osmQo1a0Bi/L3bOfH8mesKLJ1c3CuwcHGN1E=";
           nativeBuildInputs = with pkgs; [
             pkg-config
             gcc
